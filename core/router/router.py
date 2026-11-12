@@ -5,6 +5,7 @@ from core.models.memory import ExtractedMemoryCandidate, MemoryType
 from core.models.ingest import SourceMetadata, SourceType
 from core.config import settings
 from core.adapters.redis_adapter import RedisAdapter
+from core.jev.contracts import MemoryDecision
 
 class StorageDestination(str, Enum):
     POSTGRES = "postgres"
@@ -70,6 +71,41 @@ class DeterministicRouter:
             destinations=destinations,
             ttl_seconds=ttl,
             reason="Durable canonical record assigned to PostgreSQL with semantic/graph indexing as appropriate"
+        )
+
+    def route_jev_decision(
+        self,
+        decision: MemoryDecision,
+        source: SourceMetadata,
+        has_graph_entities: bool = False
+    ) -> RoutingDecision:
+        """
+        Executes storage routing directly determined by JEV decision contract.
+        Validates target storage systems deterministically.
+        """
+        destinations: List[StorageDestination] = []
+        ttl: Optional[int] = None
+
+        if "redis" in decision.storage_targets:
+            destinations.append(StorageDestination.REDIS)
+            ttl = self.default_ttl if decision.lifetime == "temporary" else self.default_ttl * 2
+
+        if "postgres" in decision.storage_targets or decision.lifetime == "persistent":
+            if StorageDestination.POSTGRES not in destinations:
+                destinations.append(StorageDestination.POSTGRES)
+
+        if "pgvector" in decision.storage_targets or decision.requires_semantic_search:
+            if StorageDestination.PGVECTOR not in destinations:
+                destinations.append(StorageDestination.PGVECTOR)
+
+        if "neo4j" in decision.storage_targets or (decision.has_meaningful_relationships and has_graph_entities):
+            if StorageDestination.NEO4J not in destinations:
+                destinations.append(StorageDestination.NEO4J)
+
+        return RoutingDecision(
+            destinations=destinations,
+            ttl_seconds=ttl,
+            reason=f"JEV decision routed: {decision.reasoning}"
         )
 
     def store_temporary_context(self, session_id: str, content: str, ttl_seconds: Optional[int] = None) -> str:

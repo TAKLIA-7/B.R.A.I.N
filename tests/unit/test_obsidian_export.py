@@ -150,3 +150,4 @@ def test_graceful_handling_when_vault_disabled():
     result = exporter.sync_from_postgres()
     assert result["status"] == "skipped"
     assert "Vault path is not configured" in result["message"]
+

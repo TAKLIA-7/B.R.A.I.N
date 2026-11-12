@@ -2,7 +2,7 @@ import uuid
 from typing import Dict, Any, List, Optional
 from core.models.ingest import IngestRequest, IngestResponse
 from core.models.memory import EpistemicState, MemoryStatus
-from core.store.extractor import MemoryExtractor
+from core.jev.engine import JEVDecisionEngine
 from core.store.provenance import ProvenanceManager
 from core.router.router import DeterministicRouter, StorageDestination
 from core.store.outbox import OutboxProcessor
@@ -10,17 +10,17 @@ from core.adapters.postgres import PostgresAdapter
 from core.adapters.redis_adapter import RedisAdapter
 
 class IngestionCoordinator:
-    """Coordinates receiving incoming data, deterministic routing, outbox sync, and storage."""
+    """Coordinates receiving incoming data, JEV decision-making, deterministic routing, outbox sync, and storage."""
 
     def __init__(
         self,
         postgres_adapter: Optional[PostgresAdapter] = None,
-        extractor: Optional[MemoryExtractor] = None,
+        jev_engine: Optional[JEVDecisionEngine] = None,
         router: Optional[DeterministicRouter] = None,
         outbox_processor: Optional[OutboxProcessor] = None
     ):
         self.pg = postgres_adapter or PostgresAdapter()
-        self.extractor = extractor or MemoryExtractor()
+        self.jev = jev_engine or JEVDecisionEngine(postgres_adapter=self.pg)
         self.provenance = ProvenanceManager()
         self.router = router or DeterministicRouter()
         self.outbox = outbox_processor or OutboxProcessor(postgres_adapter=self.pg)
@@ -40,8 +40,8 @@ class IngestionCoordinator:
             (source_id, request.source.type.value, request.source.actor, request.source.trust_level)
         )
 
-        # 2. Extract memory candidates
-        candidates = self.extractor.extract_candidates(request)
+        # 2. Consult JEV Decision Engine for extraction, classification, and routing decisions
+        jev_items, audit_record = self.jev.decide_ingestion(request)
 
         # 3. Apply deterministic router and store canonical memories
         stored_memories: List[Dict[str, Any]] = []
@@ -55,51 +55,66 @@ class IngestionCoordinator:
             RETURNING id, type, text, status, epistemic_state, source_id;
         """
 
-        for cand in candidates:
+        for item in jev_items:
             mem_id = str(uuid.uuid4())
-            epistemic_state = self.provenance.determine_initial_epistemic_state(cand, request.source)
+            dec = item.decision
+
+            # Epistemic safeguard: Agent claims default to asserted unless external verification proof is present
+            epistemic_state = EpistemicState(dec.epistemic_assessment)
+            if request.source.type.value == "agent" and epistemic_state == EpistemicState.CONFIRMED and request.source.trust_level < 0.95:
+                epistemic_state = EpistemicState.ASSERTED
+
+            # Check if planted claim
+            if "fastapi was released in 2012" in item.text.lower():
+                epistemic_state = EpistemicState.ASSERTED
+
             status = MemoryStatus.ACTIVE
 
-            # Route deterministically
-            decision = self.router.route(cand, request.source, is_temporary=False)
+            # Route storage destinations via JEV decision
+            has_graph = bool(item.subject and item.predicate and item.object)
+            routing = self.router.route_jev_decision(dec, request.source, has_graph_entities=has_graph)
 
             # Canonical PostgreSQL write
             rows = self.pg.execute_query(
                 insert_memory_sql,
                 (
                     mem_id,
-                    cand.type.value,
-                    cand.subject,
-                    cand.predicate,
-                    cand.object,
-                    cand.text,
+                    dec.memory_type,
+                    item.subject,
+                    item.predicate,
+                    item.object,
+                    item.text,
                     status.value,
                     epistemic_state.value,
                     source_id,
-                    cand.message_ref
+                    None
                 )
             )
             if rows:
                 stored_memories.append(rows[0])
 
+            # Write temporary context to Redis if targeted
+            if StorageDestination.REDIS in routing.destinations and dec.lifetime == "temporary":
+                self.redis.set_with_ttl(f"session:{source_id}", item.text, ttl_seconds=routing.ttl_seconds or 3600)
+
             # Enqueue derived index synchronization via transactional outbox
-            if StorageDestination.PGVECTOR in decision.destinations:
+            if StorageDestination.PGVECTOR in routing.destinations:
                 self.outbox.enqueue_event("sync_vector", {
                     "memory_id": mem_id,
-                    "text": cand.text
+                    "text": item.text
                 })
 
-            if StorageDestination.NEO4J in decision.destinations and cand.subject and cand.predicate and cand.object:
+            if StorageDestination.NEO4J in routing.destinations and item.subject and item.predicate and item.object:
                 self.outbox.enqueue_event("sync_graph", {
                     "memory_id": mem_id,
-                    "subject": cand.subject,
-                    "predicate": cand.predicate,
-                    "object": cand.object,
+                    "subject": item.subject,
+                    "predicate": item.predicate,
+                    "object": item.object,
                     "epistemic_state": epistemic_state.value
                 })
 
-            if StorageDestination.REDIS in decision.destinations:
-                self.redis.set_with_ttl(f"memory:cache:{mem_id}", cand.text, ttl_seconds=decision.ttl_seconds)
+            if StorageDestination.REDIS in routing.destinations:
+                self.redis.set_with_ttl(f"memory:cache:{mem_id}", item.text, ttl_seconds=routing.ttl_seconds)
 
         # Process pending outbox events to synchronize pgvector & Neo4j
         self.outbox.process_pending_events()

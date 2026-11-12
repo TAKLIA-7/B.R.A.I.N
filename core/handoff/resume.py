@@ -1,86 +1,55 @@
-import json
-import re
-from typing import Dict, Any, List, Optional
+import logging
+from typing import Dict, Any, Optional
 from core.adapters.postgres import PostgresAdapter
-from core.handoff.checkpoint_manager import CheckpointManager
-from core.retrieve.context_budget import ContextBudgetManager
+from core.handoff.checkpoint import CheckpointService
+from core.handoff.context_builder import HandoverContextBuilder
+from core.handoff.schemas import ResumeResponse
 
-class ResumeManager:
-    """Constructs durable handover context for resuming agents without transcript transfer."""
+logger = logging.getLogger(__name__)
+
+class ResumeService:
+    """
+    Coordinates task resumption for independent AI agents without raw conversation transcripts.
+    Preserves completed/pending steps, decisions, bug investigations, and verified fixes.
+    """
 
     def __init__(
         self,
         postgres_adapter: Optional[PostgresAdapter] = None,
-        checkpoint_manager: Optional[CheckpointManager] = None
+        checkpoint_service: Optional[CheckpointService] = None,
+        context_builder: Optional[HandoverContextBuilder] = None
     ):
         self.pg = postgres_adapter or PostgresAdapter()
-        self.cm = checkpoint_manager or CheckpointManager(postgres_adapter=self.pg)
-        self.budget_manager = ContextBudgetManager()
+        self.checkpoint_service = checkpoint_service or CheckpointService(postgres_adapter=self.pg)
+        self.context_builder = context_builder or HandoverContextBuilder(postgres_adapter=self.pg)
 
-    def resume_task(self, task_id: str, token_budget: int = 1000) -> Dict[str, Any]:
+    def resume_task(
+        self,
+        task_id: str,
+        requesting_agent: str = "agent",
+        token_budget: int = 4000
+    ) -> ResumeResponse:
         """
         Resumes an unfinished task for a fresh agent.
         1. Loads canonical latest checkpoint from PostgreSQL.
-        2. Detects referenced files/symbols and loads matching bug history.
-        3. Enforces token budget.
-        4. Excludes any original conversation transcript.
+        2. Consults JEV and HandoverContextBuilder to assemble actionable state.
+        3. Enforces token budget and excludes all conversation transcripts.
         """
-        cp = self.cm.get_latest_checkpoint(task_id)
+        cp = self.checkpoint_service.get_latest_checkpoint(task_id)
         if not cp:
-            return {
-                "task_id": task_id,
-                "status": "not_found",
-                "message": f"No checkpoints found for task {task_id}"
-            }
+            raise ValueError(f"Task '{task_id}' has no checkpoints or does not exist.")
 
-        state = cp["state_json"]
-        if isinstance(state, str):
-            state = json.loads(state)
+        # Update task owner to requesting_agent
+        self.checkpoint_service.update_task_owner(task_id, requesting_agent)
 
-        # Detect referenced files/symbols across steps, goal, and decisions
-        combined_text = json.dumps(state)
-        symbols = set(re.findall(r"[\w/\\-]+\.(?:py|json|md|sql|ts|js)", combined_text))
+        handover_dict = self.context_builder.build_handover(
+            task_id=task_id,
+            checkpoint_data=cp,
+            requesting_agent=requesting_agent,
+            token_budget=token_budget
+        )
 
-        # Query matching bug history from PostgreSQL
-        matching_bugs: List[Dict[str, Any]] = []
-        if symbols:
-            bug_sql = """
-                SELECT bug_id, title, symptom, root_cause, status, severity, location, reported_by
-                FROM bugs
-                ORDER BY first_seen DESC
-                LIMIT 5;
-            """
-            rows = self.pg.execute_query(bug_sql)
-            for b in rows:
-                loc = b.get("location")
-                if loc:
-                    if isinstance(loc, str):
-                        loc = json.loads(loc)
-                    files = loc.get("files", [])
-                    if any(f in symbols for f in files) or any(s in f for f in files for s in symbols):
-                        matching_bugs.append(b)
-                elif not symbols:
-                    matching_bugs.append(b)
+        return ResumeResponse(**handover_dict)
 
-        # Assemble compact context without transcript
-        context = {
-            "task_id": state["task_id"],
-            "version": cp["version"],
-            "goal": state["goal"],
-            "steps": state["steps"],
-            "decisions": state["decisions"],
-            "rejected": state["rejected"],
-            "open_questions": state["open_questions"],
-            "checkpoint_written_by": state["written_by"],
-            "matching_bugs": matching_bugs,
-            "token_budget": token_budget
-        }
-
-        # Estimate tokens used
-        context_str = json.dumps(context)
-        tokens_used, _ = self.budget_manager.estimate_tokens(context_str)
-        context["estimated_tokens"] = tokens_used
-        context["token_count_mode"] = "conservative_estimate"
-
-        return context
-
+# Alias for backwards compatibility
+ResumeManager = ResumeService

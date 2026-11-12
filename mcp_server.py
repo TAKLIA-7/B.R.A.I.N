@@ -1,29 +1,31 @@
 from typing import Optional, Dict, Any, List
 from fastmcp import FastMCP
 from core.models.ingest import IngestRequest, SourceMetadata, SourceType
-from core.models.checkpoint import HandoverState
+from core.models.checkpoint import HandoverState, CheckpointState
 from core.store.ingest import IngestionCoordinator
 from core.retrieve.retriever import HybridRetriever
-from core.handoff.checkpoint_manager import CheckpointManager
-from core.handoff.resume import ResumeManager
+from core.handoff.checkpoint import CheckpointService
+from core.handoff.resume import ResumeService
 from core.bugs.manager import BugManager
 from core.bugs.projection import MarkdownProjectionGenerator
 from core.forget.forget_manager import ForgetManager
 from core.adapters.neo4j_adapter import Neo4jAdapter
 from core.adapters.postgres import PostgresAdapter
 from core.metrics.call_logger import log_mcp_call
+from core.jev.engine import JEVDecisionEngine
 
 mcp = FastMCP("Knowledge Brain")
 
-coordinator = IngestionCoordinator()
-retriever = HybridRetriever()
-checkpoint_manager = CheckpointManager()
-resume_manager = ResumeManager()
+pg_adapter = PostgresAdapter()
+jev_engine = JEVDecisionEngine(postgres_adapter=pg_adapter)
+coordinator = IngestionCoordinator(postgres_adapter=pg_adapter, jev_engine=jev_engine)
+retriever = HybridRetriever(postgres_adapter=pg_adapter, jev_engine=jev_engine)
+checkpoint_manager = CheckpointService(postgres_adapter=pg_adapter)
+resume_manager = ResumeService(postgres_adapter=pg_adapter)
 bug_manager = BugManager()
 projection_generator = MarkdownProjectionGenerator()
 forget_manager = ForgetManager()
 neo4j_adapter = Neo4jAdapter()
-pg_adapter = PostgresAdapter()
 
 @mcp.tool()
 @log_mcp_call("memory_search")
@@ -79,6 +81,23 @@ def memory_update(id: str, change: str, reason: str, agent: str = "agent") -> Di
     return {"status": "success", "superseded_id": id, "new_id": new_id, "reason": reason}
 
 @mcp.tool()
+@log_mcp_call("memory_check_conflict")
+def memory_check_conflict(memory_id: str, new_claim: str, trust_level: float = 0.8) -> Dict[str, Any]:
+    """
+    Consult JEV to detect potential conflicts between a stored memory and a new claim.
+    Returns resolution (supersede, dispute, coexist, reject) and assigned epistemic state.
+    """
+    rows = pg_adapter.execute_query("SELECT id, text, trust_score, epistemic_state FROM memories WHERE id = %s;", (memory_id,))
+    if not rows:
+        return {"status": "error", "message": f"Memory {memory_id} not found"}
+    decision, audit = jev_engine.decide_conflict(rows[0], new_claim, trust_level)
+    return {
+        "status": "success",
+        "decision": decision.model_dump(),
+        "audit_id": audit.get("decision_id")
+    }
+
+@mcp.tool()
 @log_mcp_call("memory_forget")
 def memory_forget(scope: str, agent: str = "agent") -> Dict[str, Any]:
     """
@@ -90,23 +109,70 @@ def memory_forget(scope: str, agent: str = "agent") -> Dict[str, Any]:
 
 @mcp.tool()
 @log_mcp_call("task_checkpoint")
-def task_checkpoint(task_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
+def task_checkpoint(
+    task_id: str,
+    goal: Optional[str] = None,
+    steps: Optional[List[Dict[str, Any]]] = None,
+    decisions: Optional[List[Dict[str, Any]]] = None,
+    rejected: Optional[List[Dict[str, Any]]] = None,
+    open_questions: Optional[List[str]] = None,
+    written_by: str = "agent",
+    project_files: Optional[List[str]] = None,
+    test_results: Optional[List[str]] = None,
+    git_commit: Optional[str] = None,
+    git_branch: Optional[str] = None,
+    state: Optional[Dict[str, Any]] = None,
+    expected_version: Optional[int] = None
+) -> Dict[str, Any]:
     """
     Save durable task checkpoint state.
     Call this tool after every meaningful execution step to guarantee progress survives restarts.
     """
-    validated_state = HandoverState.model_validate(state)
-    saved = checkpoint_manager.save_checkpoint(task_id, validated_state)
-    return {"status": "success", "checkpoint": saved}
+    if state is not None:
+        raw_state = dict(state)
+        if "task_id" not in raw_state:
+            raw_state["task_id"] = task_id
+        if "written_by" not in raw_state and written_by:
+            raw_state["written_by"] = written_by
+    else:
+        raw_state = {
+            "task_id": task_id,
+            "goal": goal or "",
+            "steps": steps or [],
+            "decisions": decisions or [],
+            "rejected": rejected or [],
+            "open_questions": open_questions or [],
+            "written_by": written_by,
+            "project_files": project_files or [],
+            "test_results": test_results or [],
+            "git_commit": git_commit,
+            "git_branch": git_branch
+        }
+    validated_state = CheckpointState.model_validate(raw_state)
+    res = checkpoint_manager.save_checkpoint(state=validated_state, expected_version=expected_version)
+    out = dict(res)
+    out["status"] = "success"
+    out["version"] = res["checkpoint_version"]
+    out["checkpoint"] = dict(res)
+    return out
 
 @mcp.tool()
 @log_mcp_call("task_resume")
-def task_resume(task_id: str, token_budget: int = 1000) -> Dict[str, Any]:
+def task_resume(
+    task_id: str,
+    requesting_agent: str = "agent",
+    token_budget: int = 4000
+) -> Dict[str, Any]:
     """
     Resume an existing task across restarts or model vendors.
     Call this at the beginning of every task to load goals, progress, decisions, and matching bug history.
     """
-    return resume_manager.resume_task(task_id=task_id, token_budget=token_budget)
+    res = resume_manager.resume_task(
+        task_id=task_id,
+        requesting_agent=requesting_agent,
+        token_budget=token_budget
+    )
+    return res.model_dump()
 
 @mcp.tool()
 @log_mcp_call("bug_report")

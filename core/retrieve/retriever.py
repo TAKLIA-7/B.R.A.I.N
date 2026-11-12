@@ -6,6 +6,7 @@ from core.adapters.embeddings import EmbeddingGenerator
 from core.retrieve.intent import QueryIntentAnalyzer
 from core.retrieve.ranking import MultiFactorRanker
 from core.retrieve.context_budget import ContextBudgetManager, RetrievedItem
+from core.jev.engine import JEVDecisionEngine
 
 STOP_WORDS = {
     "what", "does", "which", "this", "that", "with", "from",
@@ -14,7 +15,7 @@ STOP_WORDS = {
 
 class HybridRetriever:
     """
-    Coordinates semantic retrieval in PostgreSQL/pgvector, graph traversal in Neo4j,
+    Coordinates JEV-guided semantic retrieval in PostgreSQL/pgvector, graph traversal in Neo4j,
     bug intelligence lookups, multi-factor ranking, and token-budget constrained context packaging.
     """
 
@@ -22,7 +23,8 @@ class HybridRetriever:
         self,
         postgres_adapter: Optional[PostgresAdapter] = None,
         neo4j_adapter: Optional[Neo4jAdapter] = None,
-        embedding_generator: Optional[EmbeddingGenerator] = None
+        embedding_generator: Optional[EmbeddingGenerator] = None,
+        jev_engine: Optional[JEVDecisionEngine] = None
     ):
         self.pg = postgres_adapter or PostgresAdapter()
         self.neo = neo4j_adapter or Neo4jAdapter()
@@ -30,6 +32,7 @@ class HybridRetriever:
         self.intent_analyzer = QueryIntentAnalyzer()
         self.ranker = MultiFactorRanker()
         self.budget_manager = ContextBudgetManager()
+        self.jev = jev_engine or JEVDecisionEngine(postgres_adapter=self.pg)
 
     def search(
         self,
@@ -71,9 +74,20 @@ class HybridRetriever:
 
         scored_items.sort(key=lambda x: x.score, reverse=True)
 
-        # 2. Graph retrieval if relationship intent detected
+        # Consult JEV Decision Engine for retrieval strategy and filtering
+        jev_decision, _ = self.jev.decide_retrieval(query, token_budget, candidates=raw_rows)
+
+        # If JEV specifically selected memory IDs, boost them to the top
+        if jev_decision.selected_memory_ids:
+            selected_set = set(jev_decision.selected_memory_ids)
+            for item in scored_items:
+                if str(item.id) in selected_set:
+                    item.score = min(1.0, item.score + 0.15)
+            scored_items.sort(key=lambda x: x.score, reverse=True)
+
+        # 2. Graph retrieval if relationship intent detected or JEV requested graph search
         graph_relationships: Optional[List[Dict[str, Any]]] = None
-        if intent.is_graph:
+        if intent.is_graph or jev_decision.include_graph_search:
             # Extract query tokens excluding generic stop words
             tokens = [
                 t.lower() for t in re.findall(r"\b\w+\b", query)
@@ -106,9 +120,10 @@ class HybridRetriever:
                 bug_history = bug_rows
 
         # 4. Context packaging with token budget enforcement and abstention check
+        effective_budget = min(token_budget, jev_decision.token_budget)
         response = self.budget_manager.format_search_response(
             items=scored_items,
-            token_budget=token_budget,
+            token_budget=effective_budget,
             min_score_threshold=0.30,
             graph_relationships=graph_relationships,
             bug_history=bug_history

@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIMENSION: int = 1536  # 1536 for text-embedding-3-small, 384 for all-MiniLM-L6-v2
 
+    # OpenRouter Model Gateway for JEV
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_MODEL: str = "google/gemini-2.5-flash"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
+    # JEV Decision Engine
+    JEV_ENABLED: bool = True
+    JEV_TIMEOUT_SECONDS: float = 30.0
+    JEV_MAX_RETRIES: int = 2
+    JEV_FALLBACK_ON_ERROR: bool = True
+
     # Application Environment
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"

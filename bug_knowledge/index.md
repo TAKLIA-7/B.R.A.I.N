@@ -42,3 +42,36 @@ This index is generated idempotently from authoritative PostgreSQL records.
 | [BUG-RESUME-9E55](./bugs/BUG-RESUME-9E55.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
 | [BUG-43FF43](./bugs/BUG-43FF43.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
 | [BUG-SCENARIO-3A60](./bugs/BUG-SCENARIO-3A60.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-6CF6D1](./bugs/BUG-TDD-6CF6D1.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-F554A5](./bugs/BUG-PROJ-F554A5.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-RESUME-8F94](./bugs/BUG-RESUME-8F94.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-FF1729](./bugs/BUG-FF1729.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-TDD-FCA5B4](./bugs/BUG-TDD-FCA5B4.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-ABA92D](./bugs/BUG-PROJ-ABA92D.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-RESUME-77C0](./bugs/BUG-RESUME-77C0.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-F99913](./bugs/BUG-F99913.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-7C6F64](./bugs/BUG-7C6F64.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-SCENARIO-AD36](./bugs/BUG-SCENARIO-AD36.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-745310](./bugs/BUG-TDD-745310.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-4D597B](./bugs/BUG-PROJ-4D597B.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-RESUME-5BDF](./bugs/BUG-RESUME-5BDF.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-DE8F94](./bugs/BUG-DE8F94.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-SCENARIO-9A14](./bugs/BUG-SCENARIO-9A14.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-e5af7f](./bugs/BUG-e5af7f.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-DB-1d0b22](./bugs/BUG-DB-1d0b22.md) | Async DB connection pool exhausted under concurrent logins | `investigating` | `high` | Agent A |
+| [BUG-DB-d3dee5](./bugs/BUG-DB-d3dee5.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-RESUME-666C](./bugs/BUG-RESUME-666C.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-TDD-CD7AE1](./bugs/BUG-TDD-CD7AE1.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-ACA9CF](./bugs/BUG-PROJ-ACA9CF.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-9654be](./bugs/BUG-9654be.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-831B](./bugs/BUG-RESUME-831B.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-57AC25](./bugs/BUG-57AC25.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-7b4f6e](./bugs/BUG-DB-7b4f6e.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-5777](./bugs/BUG-SCENARIO-5777.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-11187B](./bugs/BUG-TDD-11187B.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-6ABD10](./bugs/BUG-PROJ-6ABD10.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-8bfc16](./bugs/BUG-8bfc16.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-DE03](./bugs/BUG-RESUME-DE03.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-5A1BA7](./bugs/BUG-5A1BA7.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-725127](./bugs/BUG-DB-725127.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-94F6](./bugs/BUG-SCENARIO-94F6.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |

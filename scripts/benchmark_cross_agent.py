@@ -60,7 +60,8 @@ def run_cross_agent_benchmark() -> dict:
     assert agent_b_handover["version"] == 1
 
     # Measure input tokens received by Agent B
-    v1_tokens_in, _ = budget_mgr.estimate_tokens(json.dumps(agent_b_handover))
+    handover_dict = agent_b_handover.model_dump() if hasattr(agent_b_handover, "model_dump") else agent_b_handover
+    v1_tokens_in, _ = budget_mgr.estimate_tokens(json.dumps(handover_dict))
 
     # 3. Agent B continues: implements endpoints and completes step 2 & 3
     # Objective test check:

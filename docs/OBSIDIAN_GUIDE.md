@@ -60,3 +60,4 @@ python scripts/sync_obsidian.py
 The sync script is completely idempotent and safe to run on a recurring cron job or post-task hook. If PostgreSQL is updated, re-running the script immediately updates the vault without duplicating files or breaking existing note links.
 
 If Obsidian is not running or the vault path is disabled (`OBSIDIAN_VAULT_PATH=""`), the backend continues to operate with zero degradation.
+
