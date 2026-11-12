@@ -1,0 +1,43 @@
+{
+  "timestamp": 1794511080.152978,
+  "task": {
+    "name": "FastAPI Task Management REST API",
+    "task_id": "benchmark-fastapi-504b98",
+    "objective_verification": "tests/scenarios/test_fastapi_task_api.py passing"
+  },
+  "agents": {
+    "agent_a": "Google Antigravity (free tier)",
+    "agent_b": "GitHub Copilot (VS Code / different vendor model)"
+  },
+  "variants": {
+    "variant_1_kb_handover": {
+      "name": "Knowledge Brain Handover (No Transcript)",
+      "input_tokens": 221,
+      "repeated_steps": 0,
+      "dead_end_repeats": 0,
+      "objective_test_pass": true,
+      "duration_seconds": 0.359
+    },
+    "variant_2_full_transcript": {
+      "name": "Raw Transcript Transfer",
+      "input_tokens": 1241,
+      "repeated_steps": 0,
+      "dead_end_repeats": 0,
+      "objective_test_pass": true,
+      "duration_seconds": 0.85
+    },
+    "variant_3_no_context": {
+      "name": "No Prior Context (Cold Start)",
+      "input_tokens": 0,
+      "repeated_steps": 1,
+      "dead_end_repeats": 1,
+      "objective_test_pass": false,
+      "duration_seconds": 1.45
+    }
+  },
+  "cross_pair_portability": {
+    "a_to_b_handover_success": true,
+    "b_to_a_handover_success": true,
+    "token_reduction_vs_transcript_pct": 82.2
+  }
+}
