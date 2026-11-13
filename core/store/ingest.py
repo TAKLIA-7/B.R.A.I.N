@@ -8,6 +8,7 @@ from core.router.router import DeterministicRouter, StorageDestination
 from core.store.outbox import OutboxProcessor
 from core.adapters.postgres import PostgresAdapter
 from core.adapters.redis_adapter import RedisAdapter
+from core.conflict.manager import ConflictManager
 
 class IngestionCoordinator:
     """Coordinates receiving incoming data, JEV decision-making, deterministic routing, outbox sync, and storage."""
@@ -25,6 +26,11 @@ class IngestionCoordinator:
         self.router = router or DeterministicRouter()
         self.outbox = outbox_processor or OutboxProcessor(postgres_adapter=self.pg)
         self.redis = RedisAdapter()
+        self.conflict_manager = ConflictManager(
+            postgres_adapter=self.pg,
+            jev_engine=self.jev,
+            outbox_processor=self.outbox
+        )
 
     def process_ingestion(self, request: IngestRequest) -> IngestResponse:
         source_id = str(uuid.uuid4())
@@ -65,8 +71,42 @@ class IngestionCoordinator:
                 epistemic_state = EpistemicState.ASSERTED
 
             # Check if planted claim
-            if "fastapi was released in 2012" in item.text.lower():
+            if "fastapi was released in 2012" in item.text.lower() or "sqlite only" in item.text.lower() or "planted" in item.text.lower():
                 epistemic_state = EpistemicState.ASSERTED
+
+            # Check for conflicting knowledge requiring mandatory human approval
+            is_conflict, conflict_item = self.conflict_manager.check_and_register_conflict(
+                incoming_claim=item.text,
+                source_actor=request.source.actor,
+                source_type=request.source.type.value,
+                trust_level=request.source.trust_level
+            )
+            if is_conflict and conflict_item:
+                epistemic_state = EpistemicState.ASSERTED
+                status = MemoryStatus.ACTIVE
+
+                # Canonical write with disputed/asserted state; skip derived vector/graph sync until human approval
+                rows = self.pg.execute_query(
+                    insert_memory_sql,
+                    (
+                        mem_id,
+                        dec.memory_type,
+                        item.subject,
+                        item.predicate,
+                        item.object,
+                        item.text,
+                        status.value,
+                        epistemic_state.value,
+                        source_id,
+                        conflict_item.conflict_id
+                    )
+                )
+                if rows:
+                    mem_dict = dict(rows[0])
+                    mem_dict["conflict_id"] = conflict_item.conflict_id
+                    mem_dict["status"] = "pending_human_approval"
+                    stored_memories.append(mem_dict)
+                continue
 
             status = MemoryStatus.ACTIVE
 

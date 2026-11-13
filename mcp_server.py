@@ -21,6 +21,8 @@ from core.adapters.neo4j_adapter import Neo4jAdapter
 from core.adapters.postgres import PostgresAdapter
 from core.metrics.call_logger import log_mcp_call
 from core.jev.engine import JEVDecisionEngine
+from core.agent_monitor import CheckpointScheduler, AgentUsageMetrics
+from core.conflict.manager import ConflictManager
 
 mcp = FastMCP("Knowledge Brain")
 
@@ -30,6 +32,8 @@ coordinator = IngestionCoordinator(postgres_adapter=pg_adapter, jev_engine=jev_e
 retriever = HybridRetriever(postgres_adapter=pg_adapter, jev_engine=jev_engine)
 checkpoint_manager = CheckpointService(postgres_adapter=pg_adapter)
 resume_manager = ResumeService(postgres_adapter=pg_adapter)
+checkpoint_scheduler = CheckpointScheduler(postgres_adapter=pg_adapter, checkpoint_service=checkpoint_manager)
+conflict_manager = ConflictManager(postgres_adapter=pg_adapter, jev_engine=jev_engine)
 bug_manager = BugManager()
 projection_generator = MarkdownProjectionGenerator()
 forget_manager = ForgetManager()
@@ -92,20 +96,65 @@ def memory_update(id: str, change: str, reason: str, agent: str = "agent") -> Di
 
 @mcp.tool()
 @log_mcp_call("memory_check_conflict")
-def memory_check_conflict(memory_id: str, new_claim: str, trust_level: float = 0.8) -> Dict[str, Any]:
+def memory_check_conflict(
+    memory_id: Optional[str] = None,
+    new_claim: Optional[str] = None,
+    claim: Optional[str] = None,
+    source_actor: str = "agent",
+    trust_level: float = 0.8
+) -> Dict[str, Any]:
     """
     Consult JEV to detect potential conflicts between a stored memory and a new claim.
     Returns resolution (supersede, dispute, coexist, reject) and assigned epistemic state.
+    Automatically checks deterministic human-in-the-loop rules and registers pending approval if required.
     """
-    rows = pg_adapter.execute_query("SELECT id, text, trust_score, epistemic_state FROM memories WHERE id = %s;", (memory_id,))
-    if not rows:
-        return {"status": "error", "message": f"Memory {memory_id} not found"}
-    decision, audit = jev_engine.decide_conflict(rows[0], new_claim, trust_level)
-    return {
+    actual_claim = new_claim or claim or ""
+    existing_row = None
+    if memory_id:
+        rows = pg_adapter.execute_query("""
+            SELECT m.id, m.text, m.epistemic_state, COALESCE(s.trust_level, 0.8) AS trust_score
+            FROM memories m
+            LEFT JOIN sources s ON m.source_id = s.id
+            WHERE m.id = %s;
+        """, (memory_id,))
+        if rows:
+            existing_row = rows[0]
+
+    # Human-in-the-Loop evaluation & registration
+    is_conf, conflict_item = conflict_manager.check_and_register_conflict(
+        incoming_claim=actual_claim,
+        source_actor=source_actor,
+        trust_level=trust_level
+    )
+
+    decision_dict = {}
+    audit_id = None
+    if existing_row:
+        decision, audit = jev_engine.decide_conflict(existing_row, actual_claim, trust_level)
+        decision_dict = decision.model_dump()
+        audit_id = audit.get("decision_id")
+    elif conflict_item:
+        decision_dict = {
+            "conflict_detected": True,
+            "resolution": conflict_item.proposed_resolution,
+            "assigned_epistemic_state": "disputed" if is_conf else "confirmed",
+            "reasoning": conflict_item.reason_approval_required
+        }
+
+    out = {
         "status": "success",
-        "decision": decision.model_dump(),
-        "audit_id": audit.get("decision_id")
+        "decision": decision_dict,
+        "audit_id": audit_id,
+        "conflict_detected": is_conf,
+        "requires_human_approval": is_conf
     }
+    if conflict_item:
+        out["conflict"] = conflict_item.model_dump()
+        out["conflict_id"] = conflict_item.conflict_id
+        out["approval_status"] = conflict_item.status
+        out["applicable_rule_ids"] = conflict_item.applicable_rule_ids
+        out["reason_approval_required"] = conflict_item.reason_approval_required
+    return out
 
 @mcp.tool()
 @log_mcp_call("memory_forget")
@@ -132,11 +181,14 @@ def task_checkpoint(
     git_commit: Optional[str] = None,
     git_branch: Optional[str] = None,
     state: Optional[Dict[str, Any]] = None,
-    expected_version: Optional[int] = None
+    expected_version: Optional[int] = None,
+    project_id: Optional[str] = None,
+    sync_markdown: bool = True
 ) -> Dict[str, Any]:
     """
     Save durable task checkpoint state.
     Call this tool after every meaningful execution step to guarantee progress survives restarts.
+    Automatically updates the project's checkpoint.md when project_id is provided or linked.
     """
     if state is not None:
         raw_state = dict(state)
@@ -159,12 +211,74 @@ def task_checkpoint(
             "git_branch": git_branch
         }
     validated_state = CheckpointState.model_validate(raw_state)
-    res = checkpoint_manager.save_checkpoint(state=validated_state, expected_version=expected_version)
+    res = checkpoint_manager.save_checkpoint(
+        state=validated_state,
+        expected_version=expected_version,
+        project_id=project_id,
+        sync_markdown=sync_markdown
+    )
     out = dict(res)
     out["status"] = "success"
     out["version"] = res["checkpoint_version"]
     out["checkpoint"] = dict(res)
     return out
+
+@mcp.tool()
+@log_mcp_call("agent_report_usage")
+def agent_report_usage(
+    agent_name: str,
+    tokens_consumed: Optional[int] = None,
+    context_window_capacity: Optional[int] = None,
+    usage_percentage: Optional[float] = None,
+    session_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    model_name: Optional[str] = None,
+    project_id: Optional[str] = None,
+    auto_checkpoint: bool = True
+) -> Dict[str, Any]:
+    """
+    Report agent context window and token usage telemetry.
+    Automatically triggers proactive checkpointing and updates checkpoint.md when usage crosses thresholds.
+    """
+    metrics = AgentUsageMetrics(
+        agent_name=agent_name,
+        tokens_consumed=tokens_consumed,
+        context_window_capacity=context_window_capacity,
+        usage_percentage=usage_percentage,
+        session_id=session_id,
+        task_id=task_id,
+        model_name=model_name,
+        source="mcp_telemetry"
+    )
+    if not auto_checkpoint:
+        return {
+            "status": "recorded",
+            "usage_percentage": metrics.get_effective_usage_percentage()
+        }
+    return checkpoint_scheduler.process_usage_telemetry(metrics=metrics, project_id=project_id)
+
+@mcp.tool()
+@log_mcp_call("agent_trigger_checkpoint")
+def agent_trigger_checkpoint(
+    task_id: str,
+    project_id: Optional[str] = None,
+    trigger_reason: str = "manual_assisted",
+    agent_name: str = "agent",
+    session_id: Optional[str] = None,
+    state: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Manually or programmatically trigger a proactive checkpoint and update checkpoint.md for the active project.
+    """
+    v_state = CheckpointState.model_validate(state) if state else None
+    return checkpoint_scheduler.execute_checkpoint(
+        task_id=task_id,
+        state=v_state,
+        project_id=project_id,
+        trigger_reason=trigger_reason,
+        session_id=session_id,
+        agent_name=agent_name
+    )
 
 @mcp.tool()
 @log_mcp_call("task_resume")
@@ -476,6 +590,91 @@ def requirement_check_staleness(task_id: str) -> Dict[str, Any]:
     """Checks whether an agent's task is stale due to upstream requirement upgrades."""
     rep = req_manager.check_task_staleness(task_id)
     return rep.model_dump()
+
+# ================= Human-in-the-Loop Conflict Resolution Tools =================
+
+@mcp.tool()
+@log_mcp_call("memory_conflicts_list")
+def memory_conflicts_list(project_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Lists all pending knowledge conflicts awaiting human arbitration.
+    Returns structured conflict details, reasons approval is required, and affected documents.
+    """
+    conflicts = conflict_manager.list_pending_approvals(project_id=project_id)
+    return [c.model_dump() for c in conflicts]
+
+@mcp.tool()
+@log_mcp_call("memory_conflict_get")
+def memory_conflict_get(conflict_id: str) -> Dict[str, Any]:
+    """
+    Retrieves full details of a specific knowledge conflict, including applicable rule IDs,
+    evidence, and snapshot of existing canonical knowledge.
+    """
+    item = conflict_manager.get_conflict(conflict_id)
+    if not item:
+        return {"status": "not_found", "message": f"Conflict {conflict_id} not found"}
+    return item.model_dump()
+
+@mcp.tool()
+@log_mcp_call("memory_conflict_approve")
+def memory_conflict_approve(
+    conflict_id: str,
+    approver: str,
+    rationale: Optional[str] = None,
+    selected_resolution: Optional[str] = None,
+    is_human: bool = True
+) -> Dict[str, Any]:
+    """
+    Approves a knowledge conflict resolution.
+    Only authorized humans can approve. AI agents must NOT approve their own conflicts.
+    Synchronizes canonical PostgreSQL, derived stores, and Markdown documents.
+    """
+    return conflict_manager.approve_conflict(
+        conflict_id=conflict_id,
+        approver=approver,
+        rationale=rationale,
+        selected_resolution=selected_resolution,
+        is_human=is_human
+    )
+
+@mcp.tool()
+@log_mcp_call("memory_conflict_reject")
+def memory_conflict_reject(
+    conflict_id: str,
+    approver: str,
+    rationale: str,
+    is_human: bool = True
+) -> Dict[str, Any]:
+    """
+    Rejects a proposed conflicting knowledge change.
+    Canonical active knowledge remains strictly unchanged; the rejected claim is never synchronized.
+    """
+    return conflict_manager.reject_conflict(
+        conflict_id=conflict_id,
+        approver=approver,
+        rationale=rationale,
+        is_human=is_human
+    )
+
+@mcp.tool()
+@log_mcp_call("memory_conflict_clarify")
+def memory_conflict_clarify(
+    conflict_id: str,
+    author: str,
+    clarification_notes: str,
+    updated_claim: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Submits clarification or additional evidence for a pending conflict.
+    The conflict remains pending and is re-evaluated; silence or timeout is never assumed as approval.
+    """
+    res = conflict_manager.submit_clarification(
+        conflict_id=conflict_id,
+        author=author,
+        clarification_notes=clarification_notes,
+        updated_claim=updated_claim
+    )
+    return res.model_dump()
 
 @mcp.prompt()
 def resume_task(task_id: str) -> str:

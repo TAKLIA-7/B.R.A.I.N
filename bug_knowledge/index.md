@@ -91,3 +91,38 @@ This index is generated idempotently from authoritative PostgreSQL records.
 | [BUG-SCENARIO-A0E4](./bugs/BUG-SCENARIO-A0E4.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
 | [BUG-ANTIGRAVITY-001](./bugs/BUG-ANTIGRAVITY-001.md) | PostgreSQL connection pool exhaustion on concurrent startup | `open` | `high` | antigravity_agent |
 | [BUG-STRIPE-002](./bugs/BUG-STRIPE-002.md) | Stripe Webhook Signature Verification Failure | `fixed` | `high` | agent_beta |
+| [BUG-TDD-82ED51](./bugs/BUG-TDD-82ED51.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-D5C85D](./bugs/BUG-PROJ-D5C85D.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-a1882e](./bugs/BUG-a1882e.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-8BD9](./bugs/BUG-RESUME-8BD9.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-7241E2](./bugs/BUG-7241E2.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-6b1328](./bugs/BUG-DB-6b1328.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-BA18](./bugs/BUG-SCENARIO-BA18.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-63FF96](./bugs/BUG-TDD-63FF96.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-7B6E64](./bugs/BUG-PROJ-7B6E64.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-867f21](./bugs/BUG-867f21.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-4D22](./bugs/BUG-RESUME-4D22.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-B14B4C](./bugs/BUG-B14B4C.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-8cec4c](./bugs/BUG-DB-8cec4c.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-8BE5](./bugs/BUG-SCENARIO-8BE5.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-BCDCD9](./bugs/BUG-TDD-BCDCD9.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-457D25](./bugs/BUG-PROJ-457D25.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-c20c94](./bugs/BUG-c20c94.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-EA2B](./bugs/BUG-RESUME-EA2B.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-9830BA](./bugs/BUG-9830BA.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-c87bcd](./bugs/BUG-DB-c87bcd.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-F56D](./bugs/BUG-SCENARIO-F56D.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-0A0B3B](./bugs/BUG-TDD-0A0B3B.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-B7BBA1](./bugs/BUG-PROJ-B7BBA1.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-7f603d](./bugs/BUG-7f603d.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-562C](./bugs/BUG-RESUME-562C.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-21B842](./bugs/BUG-21B842.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-b73fd2](./bugs/BUG-DB-b73fd2.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-17D7](./bugs/BUG-SCENARIO-17D7.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-16B231](./bugs/BUG-TDD-16B231.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-906495](./bugs/BUG-PROJ-906495.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-28e948](./bugs/BUG-28e948.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-3392](./bugs/BUG-RESUME-3392.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-FF5D17](./bugs/BUG-FF5D17.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-7aa5d5](./bugs/BUG-DB-7aa5d5.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-DE0D](./bugs/BUG-SCENARIO-DE0D.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |

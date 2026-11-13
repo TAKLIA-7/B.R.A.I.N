@@ -170,6 +170,35 @@ class CheckpointService:
         except Exception as e:
             logger.warning(f"Failed to cache working state in Redis: {e}")
 
+        # 5. Synchronize project checkpoint.md if project_id or sync_markdown specified
+        project_id = kwargs.get("project_id")
+        sync_markdown = kwargs.get("sync_markdown", False)
+        if project_id or sync_markdown:
+            try:
+                from core.project_knowledge.synchronizer import ProjectDocumentSynchronizer
+                from core.agent_monitor.checkpoint_generator import CheckpointMarkdownGenerator
+                from core.agent_monitor.git_inspector import GitInspector
+                p_id = project_id
+                if not p_id:
+                    p_rows = self.pg.execute_query("SELECT project_id FROM tasks WHERE id = %s;", (actual_state.task_id,))
+                    if p_rows and p_rows[0].get("project_id"):
+                        p_id = p_rows[0]["project_id"]
+                if p_id:
+                    sync = ProjectDocumentSynchronizer(postgres_adapter=self.pg)
+                    git_state = GitInspector().inspect()
+                    md = CheckpointMarkdownGenerator.generate_checkpoint_md(
+                        state=actual_state,
+                        project_id=p_id,
+                        checkpoint_version=next_version,
+                        trigger_reason=kwargs.get("trigger_reason", "manual"),
+                        session_id=kwargs.get("session_id"),
+                        git_state=git_state
+                    )
+                    sync.sync_document(p_id, "checkpoint.md", "checkpoint", md, force=False)
+                    sync.sync_document(p_id, f"checkpoints/checkpoint_v{next_version}.md", "checkpoint_history", md, force=True)
+            except Exception as e:
+                logger.warning(f"Could not synchronize checkpoint.md: {e}")
+
         logger.info(f"Saved checkpoint v{next_version} for task {actual_state.task_id} by {actual_state.written_by}")
 
         return {

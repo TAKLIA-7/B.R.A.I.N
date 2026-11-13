@@ -27,6 +27,9 @@ from core.adapters.postgres import PostgresAdapter
 from core.adapters.redis_adapter import RedisAdapter
 from core.adapters.neo4j_adapter import Neo4jAdapter
 from core.jev.engine import JEVDecisionEngine
+from core.agent_monitor import CheckpointScheduler, AgentUsageMetrics
+from core.conflict.manager import ConflictManager
+from core.conflict.schemas import HumanApprovalAction, ClarificationRequest, ConflictApprovalItem
 
 app = FastAPI(
     title="Knowledge Brain API",
@@ -44,6 +47,8 @@ checkpoint_service = CheckpointService(postgres_adapter=pg_adapter)
 resume_service = ResumeService(postgres_adapter=pg_adapter)
 req_manager = RequirementManager(postgres_adapter=pg_adapter)
 project_manager = ProjectKnowledgeManager(postgres_adapter=pg_adapter)
+checkpoint_scheduler = CheckpointScheduler(postgres_adapter=pg_adapter, checkpoint_service=checkpoint_service)
+conflict_manager = ConflictManager(postgres_adapter=pg_adapter, jev_engine=jev_engine)
 
 # Backward-compatibility references
 checkpoint_manager = checkpoint_service
@@ -307,6 +312,190 @@ def associate_task_requirement_endpoint(task_id: str, req_id: str = Query(...), 
         return {"status": "success", "task_id": task_id, "req_id": req_id, "version": version}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to associate task with requirement: {str(e)}")
+
+# ================= Proactive Agent Monitor Endpoints =================
+
+class AgentUsagePayload(BaseModel):
+    agent_name: str
+    tokens_consumed: Optional[int] = None
+    context_window_capacity: Optional[int] = None
+    usage_percentage: Optional[float] = None
+    session_id: Optional[str] = None
+    task_id: Optional[str] = None
+    model_name: Optional[str] = None
+    project_id: Optional[str] = None
+    auto_checkpoint: bool = True
+    account_quota_info: Optional[Dict[str, Any]] = None
+
+class ProactiveCheckpointPayload(BaseModel):
+    task_id: str
+    project_id: Optional[str] = None
+    trigger_reason: str = "manual_assisted"
+    agent_name: str = "agent"
+    session_id: Optional[str] = None
+    state: Optional[CheckpointState] = None
+
+@app.post("/agent/usage")
+def report_agent_usage(payload: AgentUsagePayload):
+    """
+    Ingests AI agent usage telemetry, evaluates against context threshold policies (70%, 80%, 90%, 95%),
+    and automatically triggers proactive checkpoint updates when thresholds are crossed.
+    """
+    try:
+        metrics = AgentUsageMetrics(
+            agent_name=payload.agent_name,
+            tokens_consumed=payload.tokens_consumed,
+            context_window_capacity=payload.context_window_capacity,
+            usage_percentage=payload.usage_percentage,
+            session_id=payload.session_id,
+            task_id=payload.task_id,
+            model_name=payload.model_name,
+            account_quota_info=payload.account_quota_info,
+            source="rest_api"
+        )
+        if not payload.auto_checkpoint:
+            return {
+                "status": "recorded",
+                "usage_percentage": metrics.get_effective_usage_percentage()
+            }
+        return checkpoint_scheduler.process_usage_telemetry(metrics=metrics, project_id=payload.project_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process agent usage: {str(e)}")
+
+@app.post("/agent/checkpoint/proactive")
+def trigger_proactive_checkpoint(payload: ProactiveCheckpointPayload):
+    """Manually or programmatically triggers an immediate checkpoint update for an active task and project."""
+    try:
+        return checkpoint_scheduler.execute_checkpoint(
+            task_id=payload.task_id,
+            state=payload.state,
+            project_id=payload.project_id,
+            trigger_reason=payload.trigger_reason,
+            session_id=payload.session_id,
+            agent_name=payload.agent_name
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proactive checkpoint failed: {str(e)}")
+
+@app.get("/agent/checkpoint/triggers/{task_id}")
+def get_checkpoint_triggers(task_id: str):
+    """Retrieves the audit log of checkpoint triggers and threshold events for a task."""
+    try:
+        sql = """
+            SELECT id, task_id, project_id, agent_name, session_id,
+                   trigger_reason, context_percentage, tokens_consumed, tokens_capacity,
+                   checkpoint_version, idempotency_key, status, details, created_at
+            FROM checkpoint_triggers
+            WHERE task_id = %s
+            ORDER BY created_at DESC;
+        """
+        rows = pg_adapter.execute_query(sql, (task_id,))
+        return {"task_id": task_id, "triggers": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch checkpoint triggers: {str(e)}")
+
+# ================= Human-in-the-Loop Conflict Resolution Endpoints =================
+
+class CheckConflictRequest(BaseModel):
+    claim: str
+    project_id: Optional[str] = None
+    source_actor: str = "agent"
+    trust_level: float = 0.5
+
+@app.get("/conflicts/pending")
+def list_pending_conflicts(project_id: Optional[str] = Query(None)):
+    """Lists all pending knowledge conflicts awaiting human arbitration."""
+    try:
+        items = conflict_manager.list_pending_approvals(project_id=project_id)
+        return {"pending_conflicts": [i.model_dump() for i in items]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list pending conflicts: {str(e)}")
+
+@app.get("/conflicts/{conflict_id}")
+def get_conflict_details(conflict_id: str):
+    """Retrieves full details, rule IDs, existing snapshot, and evidence for a conflict."""
+    item = conflict_manager.get_conflict(conflict_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Conflict '{conflict_id}' not found")
+    return item.model_dump()
+
+@app.post("/conflicts/{conflict_id}/approve")
+def approve_conflict_endpoint(conflict_id: str, payload: HumanApprovalAction):
+    """
+    Approves a knowledge conflict.
+    Only authorized humans may approve. AI agents are strictly forbidden from approving their own conflicts.
+    """
+    try:
+        res = conflict_manager.approve_conflict(
+            conflict_id=conflict_id,
+            approver=payload.approver,
+            rationale=payload.rationale,
+            selected_resolution=payload.selected_resolution,
+            is_human=payload.is_human
+        )
+        return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Approval execution failed: {str(e)}")
+
+@app.post("/conflicts/{conflict_id}/reject")
+def reject_conflict_endpoint(conflict_id: str, payload: HumanApprovalAction):
+    """
+    Rejects a proposed conflicting change.
+    Existing canonical knowledge remains strictly unchanged and no derived stores are updated.
+    """
+    try:
+        res = conflict_manager.reject_conflict(
+            conflict_id=conflict_id,
+            approver=payload.approver,
+            rationale=payload.rationale or "Rejected by human",
+            is_human=payload.is_human
+        )
+        return res
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rejection failed: {str(e)}")
+
+@app.post("/conflicts/{conflict_id}/clarify")
+def clarify_conflict_endpoint(conflict_id: str, payload: ClarificationRequest):
+    """Submits clarification or additional evidence for a pending conflict."""
+    try:
+        item = conflict_manager.submit_clarification(
+            conflict_id=conflict_id,
+            author=payload.author,
+            clarification_notes=payload.clarification_notes,
+            updated_claim=payload.updated_claim,
+            additional_evidence=payload.additional_evidence
+        )
+        return item.model_dump()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Clarification submission failed: {str(e)}")
+
+@app.post("/conflicts/check")
+def check_conflict_endpoint(payload: CheckConflictRequest):
+    """Checks whether a claim triggers a conflict requiring human approval."""
+    try:
+        is_conf, item = conflict_manager.check_and_register_conflict(
+            incoming_claim=payload.claim,
+            source_actor=payload.source_actor,
+            trust_level=payload.trust_level,
+            project_id=payload.project_id
+        )
+        return {
+            "conflict_detected": is_conf,
+            "requires_human_approval": is_conf,
+            "conflict": item.model_dump() if item else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Conflict check failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

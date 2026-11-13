@@ -1,8 +1,8 @@
 {
-  "timestamp": 1794544867.1837187,
+  "timestamp": 1794575211.694338,
   "task": {
     "name": "FastAPI Task Management REST API",
-    "task_id": "benchmark-fastapi-be6428",
+    "task_id": "benchmark-fastapi-8baa6e",
     "objective_verification": "tests/scenarios/test_fastapi_task_api.py passing"
   },
   "agents": {
@@ -16,7 +16,7 @@
       "repeated_steps": 0,
       "dead_end_repeats": 0,
       "objective_test_pass": true,
-      "duration_seconds": 1.32
+      "duration_seconds": 2.432
     },
     "variant_2_full_transcript": {
       "name": "Raw Transcript Transfer",

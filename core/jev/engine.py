@@ -438,7 +438,7 @@ class JEVDecisionEngine:
 
         if self.enabled and self.client.api_key:
             try:
-                user_prompt = f"Existing Memory:\n{json.dumps(existing_memory)}\n\nNew Claim: {new_claim}\nNew Trust Level: {new_trust_level}"
+                user_prompt = f"Existing Memory:\n{json.dumps(existing_memory, default=str)}\n\nNew Claim: {new_claim}\nNew Trust Level: {new_trust_level}"
                 resp = self.client.invoke_json(CONFLICT_SYSTEM_PROMPT, user_prompt)
                 tokens_in = resp.prompt_tokens
                 tokens_out = resp.completion_tokens
