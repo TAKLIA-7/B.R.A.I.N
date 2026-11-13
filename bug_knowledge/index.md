@@ -75,3 +75,17 @@ This index is generated idempotently from authoritative PostgreSQL records.
 | [BUG-5A1BA7](./bugs/BUG-5A1BA7.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
 | [BUG-DB-725127](./bugs/BUG-DB-725127.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
 | [BUG-SCENARIO-94F6](./bugs/BUG-SCENARIO-94F6.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-B529FF](./bugs/BUG-TDD-B529FF.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-FF441A](./bugs/BUG-PROJ-FF441A.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-2d6391](./bugs/BUG-2d6391.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-B839](./bugs/BUG-RESUME-B839.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-7918BE](./bugs/BUG-7918BE.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-a0cc87](./bugs/BUG-DB-a0cc87.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-AEB1](./bugs/BUG-SCENARIO-AEB1.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-TDD-DC6697](./bugs/BUG-TDD-DC6697.md) | Async dead-lock in connection pool acquire | `verified` | `high` | tester-agent |
+| [BUG-PROJ-EA9F6B](./bugs/BUG-PROJ-EA9F6B.md) | Uncaught ValidationError on invalid payload | `verified` | `medium` | qa-agent |
+| [BUG-1c9ca5](./bugs/BUG-1c9ca5.md) | JWT expiration off-by-one | `fixed` | `high` | None |
+| [BUG-RESUME-B3CF](./bugs/BUG-RESUME-B3CF.md) | FastAPI router mount order issue | `open` | `medium` | agent-A |
+| [BUG-7F8EF0](./bugs/BUG-7F8EF0.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
+| [BUG-DB-c74c39](./bugs/BUG-DB-c74c39.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
+| [BUG-SCENARIO-A0E4](./bugs/BUG-SCENARIO-A0E4.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |

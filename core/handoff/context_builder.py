@@ -130,6 +130,26 @@ class HandoverContextBuilder:
         all_open_questions = list(set(state.get("open_questions", []) + jev_decision.unresolved_questions))
 
         # 6. Format compact text context for the agent
+        task_info = self.pg.execute_query(
+            "SELECT target_requirement_id, target_requirement_version, is_stale FROM tasks WHERE id = %s;",
+            (task_id,)
+        )
+        req_id = None
+        target_req_ver = None
+        is_stale = False
+        staleness_warning = None
+        if task_info:
+            req_id = task_info[0].get("target_requirement_id")
+            target_req_ver = task_info[0].get("target_requirement_version")
+            is_stale = task_info[0].get("is_stale", False)
+            if req_id:
+                req_rows = self.pg.execute_query(
+                    "SELECT current_version FROM requirements WHERE req_id = %s;", (req_id,)
+                )
+                if req_rows and target_req_ver and req_rows[0]["current_version"] > target_req_ver:
+                    is_stale = True
+                    staleness_warning = f"Requirement {req_id} was upgraded to v{req_rows[0]['current_version']} (Task was built against v{target_req_ver})."
+
         summary_lines = [
             f"# Handover Package: Task {task_id}",
             f"**Goal**: {state.get('goal')}",
@@ -138,9 +158,14 @@ class HandoverContextBuilder:
             f"**Requesting Agent**: {requesting_agent}",
             f"**Git Commit**: {checkpoint_data.get('git_commit') or 'Uncommitted working tree'}",
             f"**Git Branch**: {checkpoint_data.get('git_branch') or 'unknown'}",
-            "",
-            "## Completed Steps",
         ]
+        if req_id:
+            summary_lines.append(f"**Target Requirement**: {req_id} (Target v{target_req_ver or 1})")
+        if is_stale:
+            summary_lines.append(f"> [!WARNING] Task Context is STALE! {staleness_warning or 'Upstream requirement has changed.'}")
+
+        summary_lines.append("")
+        summary_lines.append("## Completed Steps")
         for s in completed_steps:
             summary_lines.append(f"- [x] {s}")
 
@@ -194,5 +219,9 @@ class HandoverContextBuilder:
             "verified_fixes": verified_fixes,
             "open_questions": all_open_questions,
             "handover_context": handover_text,
-            "token_budget": min(token_budget, jev_decision.token_budget)
+            "token_budget": min(token_budget, jev_decision.token_budget),
+            "is_stale": is_stale,
+            "target_requirement_id": req_id,
+            "target_requirement_version": target_req_ver,
+            "staleness_warning": staleness_warning
         }

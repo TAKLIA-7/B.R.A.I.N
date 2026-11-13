@@ -77,6 +77,10 @@ class ResumeResponse(BaseModel):
     open_questions: List[str] = Field(default_factory=list)
     handover_context: str
     token_budget: Optional[int] = None
+    is_stale: bool = False
+    target_requirement_id: Optional[str] = None
+    target_requirement_version: Optional[int] = None
+    staleness_warning: Optional[str] = None
 
     def __getitem__(self, item: str) -> Any:
         if hasattr(self, item):

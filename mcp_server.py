@@ -9,6 +9,14 @@ from core.handoff.resume import ResumeService
 from core.bugs.manager import BugManager
 from core.bugs.projection import MarkdownProjectionGenerator
 from core.forget.forget_manager import ForgetManager
+from core.evolution.manager import RequirementManager
+from core.evolution.schemas import (
+    RequirementCreateRequest,
+    RequirementProposalRequest,
+    RequirementApprovalRequest
+)
+from core.project_knowledge.manager import ProjectKnowledgeManager
+from core.project_knowledge.schemas import ProjectCreateRequest
 from core.adapters.neo4j_adapter import Neo4jAdapter
 from core.adapters.postgres import PostgresAdapter
 from core.metrics.call_logger import log_mcp_call
@@ -26,6 +34,8 @@ bug_manager = BugManager()
 projection_generator = MarkdownProjectionGenerator()
 forget_manager = ForgetManager()
 neo4j_adapter = Neo4jAdapter()
+req_manager = RequirementManager(postgres_adapter=pg_adapter)
+project_manager = ProjectKnowledgeManager(postgres_adapter=pg_adapter)
 
 @mcp.tool()
 @log_mcp_call("memory_search")
@@ -269,6 +279,203 @@ def knowledge_graph_search(query: str, task_id: Optional[str] = None) -> List[Di
         LIMIT 15;
     """
     return neo4j_adapter.execute_cypher(cypher, {"terms": terms})
+
+# ================= Project Knowledge MCP Tools =================
+
+@mcp.tool()
+@log_mcp_call("project_register")
+def project_register(
+    id: str,
+    name: str,
+    description: Optional[str] = None,
+    repository_url: Optional[str] = None,
+    root_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """Registers a project and scaffolds its human-readable Markdown knowledge base."""
+    req = ProjectCreateRequest(id=id, name=name, description=description, repository_url=repository_url, root_path=root_path)
+    item = project_manager.register_project(req)
+    return item.model_dump()
+
+@mcp.tool()
+@log_mcp_call("project_get")
+def project_get(project_id: str) -> Dict[str, Any]:
+    """Retrieves metadata for a registered project."""
+    p = project_manager.get_project(project_id)
+    return p.model_dump() if p else {"status": "not_found", "message": f"Project {project_id} not found"}
+
+@mcp.tool()
+@log_mcp_call("project_context")
+def project_context(project_id: str, task: Optional[str] = None, token_budget: int = 4000) -> Dict[str, Any]:
+    """
+    Retrieves task-aware project context from overview, tech stack, architecture,
+    and approved requirements within the specified token budget.
+    """
+    res = project_manager.get_project_context(project_id=project_id, task=task, token_budget=token_budget)
+    return res.model_dump()
+
+@mcp.tool()
+@log_mcp_call("project_documents_list")
+def project_documents_list(project_id: str) -> List[Dict[str, Any]]:
+    """Lists registered project documents and their synchronization state."""
+    docs = project_manager.list_documents(project_id)
+    return [d.model_dump() for d in docs]
+
+@mcp.tool()
+@log_mcp_call("project_document_get")
+def project_document_get(project_id: str, relative_path: str) -> Dict[str, Any]:
+    """Retrieves document content from disk and its metadata from PostgreSQL."""
+    doc = project_manager.get_document(project_id, relative_path)
+    return doc if doc else {"status": "not_found", "message": f"Document {relative_path} not found"}
+
+@mcp.tool()
+@log_mcp_call("project_document_sync")
+def project_document_sync(
+    project_id: str,
+    relative_path: str,
+    content: str,
+    document_type: str = "custom",
+    force: bool = False
+) -> Dict[str, Any]:
+    """Synchronizes a project Markdown document to disk and updates PostgreSQL."""
+    success, status = project_manager.sync.sync_document(project_id, relative_path, document_type, content, force=force)
+    return {"success": success, "status": status, "relative_path": relative_path}
+
+@mcp.tool()
+@log_mcp_call("project_document_validate")
+def project_document_validate(project_id: str, relative_path: str) -> Dict[str, Any]:
+    """Validates document synchronization state against disk content hash."""
+    doc = project_manager.get_document(project_id, relative_path)
+    if not doc:
+        return {"status": "not_found", "message": f"Document {relative_path} not registered"}
+    return {"status": doc["status"], "version": doc["version"], "content_hash": doc["content_hash"]}
+
+# ================= Requirement Evolution MCP Tools =================
+
+@mcp.tool()
+@log_mcp_call("requirement_propose")
+def requirement_propose(
+    req_id: str,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    proposed_description: Optional[str] = None,
+    project_id: Optional[str] = None,
+    module: str = "general",
+    category: str = "functional",
+    priority: str = "medium",
+    acceptance_criteria: Optional[List[str]] = None,
+    reason: Optional[str] = None,
+    proposed_by: str = "agent"
+) -> Dict[str, Any]:
+    """
+    Creates a new requirement or proposes an upgrade to an existing requirement.
+    Preserves historical versions and does not activate unapproved changes.
+    """
+    existing = req_manager.get_requirement(req_id)
+    if not existing:
+        create_req = RequirementCreateRequest(
+            req_id=req_id,
+            title=title or req_id,
+            description=description or proposed_description or "",
+            project_id=project_id,
+            module=module,
+            category=category,
+            priority=priority,
+            acceptance_criteria=acceptance_criteria or [],
+            created_by=proposed_by,
+            initial_status="approved" if not proposed_description else "proposed"
+        )
+        item = req_manager.create_requirement(create_req)
+        if project_id:
+            try:
+                hist = req_manager.get_requirement_history(req_id)
+                project_manager.sync_requirement_doc(project_id, req_id, item.model_dump(), [h.model_dump() for h in hist])
+            except Exception:
+                pass
+        return {"success": True, "action": "created", "requirement": item.model_dump()}
+    else:
+        proposal = RequirementProposalRequest(
+            req_id=req_id,
+            proposed_description=proposed_description or description or "",
+            acceptance_criteria=acceptance_criteria or [],
+            reason=reason or "Specification update",
+            proposed_by=proposed_by
+        )
+        res = req_manager.propose_version(proposal)
+        return {"success": True, "action": "proposed", **res}
+
+@mcp.tool()
+@log_mcp_call("requirement_approve")
+def requirement_approve(
+    req_id: str,
+    target_version: int,
+    decision: str = "approved",
+    approver: str = "lead_architect",
+    rationale: Optional[str] = None
+) -> Dict[str, Any]:
+    """Approves or rejects a proposed requirement version. Automatically flags affected tasks as stale."""
+    app_req = RequirementApprovalRequest(
+        req_id=req_id,
+        target_version=target_version,
+        decision=decision,
+        approver=approver,
+        rationale=rationale
+    )
+    res = req_manager.approve_version(app_req)
+    req_item = req_manager.get_requirement(req_id)
+    if req_item and req_item.project_id:
+        try:
+            hist = req_manager.get_requirement_history(req_id)
+            project_manager.sync_requirement_doc(req_item.project_id, req_id, req_item.model_dump(), [h.model_dump() for h in hist])
+        except Exception:
+            pass
+    return res
+
+@mcp.tool()
+@log_mcp_call("requirement_get")
+def requirement_get(req_id: str) -> Dict[str, Any]:
+    """Retrieves current approved requirement and version metadata."""
+    req = req_manager.get_requirement(req_id)
+    return req.model_dump() if req else {"status": "not_found", "message": f"Requirement {req_id} not found"}
+
+@mcp.tool()
+@log_mcp_call("requirement_history")
+def requirement_history(req_id: str) -> List[Dict[str, Any]]:
+    """Retrieves full immutable version history for a requirement."""
+    hist = req_manager.get_requirement_history(req_id)
+    return [h.model_dump() for h in hist]
+
+@mcp.tool()
+@log_mcp_call("requirement_impact")
+def requirement_impact(req_id: str, version: Optional[int] = None) -> Dict[str, Any]:
+    """Retrieves blast-radius impact analysis for a requirement version."""
+    req = req_manager.get_requirement(req_id)
+    if not req:
+        return {"status": "not_found", "message": f"Requirement {req_id} not found"}
+    v = version or req.current_version
+    rows = pg_adapter.execute_query(
+        "SELECT * FROM requirement_impacts WHERE req_id = %s AND version = %s ORDER BY created_at DESC LIMIT 1;",
+        (req_id, v)
+    )
+    if rows:
+        r = rows[0]
+        return {
+            "req_id": r["req_id"],
+            "version": r["version"],
+            "affected_modules": r["affected_modules"],
+            "affected_files": r["affected_files"],
+            "affected_endpoints": r["affected_endpoints"],
+            "affected_entities": r["affected_entities"],
+            "affected_tasks": r["affected_tasks"],
+            "affected_tests": r["affected_tests"]
+        }
+    return req_manager.compute_and_store_impact(req_id, v, req.module, req.current_description or "").model_dump()
+
+@mcp.tool()
+@log_mcp_call("requirement_check_staleness")
+def requirement_check_staleness(task_id: str) -> Dict[str, Any]:
+    """Checks whether an agent's task is stale due to upstream requirement upgrades."""
+    rep = req_manager.check_task_staleness(task_id)
+    return rep.model_dump()
 
 @mcp.prompt()
 def resume_task(task_id: str) -> str:

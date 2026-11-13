@@ -1,105 +1,105 @@
 {
-  "start_time": 1794521744.4711695,
+  "start_time": 1794544886.468862,
   "sessions": [
     {
       "session": 1,
       "action": "ingest_decision",
-      "latency_ms": 519.00315284729
+      "latency_ms": 1568.617820739746
     },
     {
       "session": 2,
       "action": "ingest_preference",
-      "latency_ms": 221.98772430419922
+      "latency_ms": 886.8768215179443
     },
     {
       "session": 3,
       "action": "ingest_fact",
-      "latency_ms": 218.8706398010254
+      "latency_ms": 2019.1154479980469
     },
     {
       "session": 4,
       "action": "semantic_search",
       "abstain": false,
       "tokens_used": 283,
-      "latency_ms": 79.14257049560547
+      "latency_ms": 1857.7485084533691
     },
     {
       "session": 5,
       "action": "planted_claim",
-      "latency_ms": 268.8765525817871
+      "latency_ms": 1942.3422813415527
     },
     {
       "session": 6,
       "action": "redis_temp_store",
-      "latency_ms": 27.07815170288086
+      "latency_ms": 33.17761421203613
     },
     {
       "session": 7,
       "action": "redis_ttl_check",
       "ttl": 60,
-      "latency_ms": 0.7827281951904297
+      "latency_ms": 1.2514591217041016
     },
     {
       "session": 8,
       "action": "search_preferences",
       "abstain": false,
-      "latency_ms": 39.78371620178223
+      "latency_ms": 667.3383712768555
     },
     {
       "session": 9,
       "action": "search_planted_claim",
       "abstain": false,
-      "latency_ms": 62.5300407409668
+      "latency_ms": 611.6526126861572
     },
     {
       "session": 10,
       "action": "memory_superseded_update",
-      "latency_ms": 29.256820678710938
+      "latency_ms": 96.55594825744629
     },
     {
       "session": 11,
       "action": "verify_version_history",
-      "latency_ms": 29.483318328857422
+      "latency_ms": 44.2960262298584
     },
     {
       "session": 12,
       "action": "create_task",
-      "latency_ms": 34.51228141784668
+      "latency_ms": 47.650814056396484
     },
     {
       "session": 13,
       "action": "checkpoint_v1",
       "version": 1,
-      "latency_ms": 160.14790534973145
+      "latency_ms": 217.0734405517578
     },
     {
       "session": 14,
       "action": "checkpoint_v2",
       "version": 2,
-      "latency_ms": 139.27865028381348
+      "latency_ms": 165.6937599182129
     },
     {
       "session": 15,
       "action": "mid_run_restart",
-      "latency_ms": 20931.814193725586
+      "latency_ms": 24407.415866851807
     },
     {
       "session": 16,
       "action": "task_resume_post_restart",
       "version": 2,
-      "latency_ms": 142.9576873779297
+      "latency_ms": 4299.940586090088
     },
     {
       "session": 17,
       "action": "verify_memories_survived",
-      "active_count": 148,
-      "latency_ms": 30.333995819091797
+      "active_count": 168,
+      "latency_ms": 27.84585952758789
     },
     {
       "session": 18,
       "action": "checkpoint_v3",
       "version": 3,
-      "latency_ms": 173.13790321350098
+      "latency_ms": 167.4361228942871
     },
     {
       "session": 19,
@@ -109,72 +109,72 @@
         2,
         3
       ],
-      "latency_ms": 22.55392074584961
+      "latency_ms": 35.13646125793457
     },
     {
       "session": 20,
       "action": "ingest_confidential_credential",
-      "latency_ms": 230.39650917053223
+      "latency_ms": 877.8219223022461
     },
     {
       "session": 21,
       "action": "verified_forgetting",
       "status": "completed",
-      "latency_ms": 647.1641063690186
+      "latency_ms": 779.5524597167969
     },
     {
       "session": 22,
       "action": "bug_report",
-      "bug_id": "BUG-SCENARIO-94F6",
-      "latency_ms": 170.72463035583496
+      "bug_id": "BUG-SCENARIO-A0E4",
+      "latency_ms": 172.00446128845215
     },
     {
       "session": 23,
       "action": "bug_log_failed_attempt",
-      "latency_ms": 134.25374031066895
+      "latency_ms": 92.12565422058105
     },
     {
       "session": 24,
       "action": "bug_log_partial_attempt",
-      "latency_ms": 134.17744636535645
+      "latency_ms": 96.19832038879395
     },
     {
       "session": 25,
       "action": "bug_record_fix_verified",
       "status": "verified",
-      "latency_ms": 142.0125961303711
+      "latency_ms": 127.03919410705566
     },
     {
       "session": 26,
       "action": "sync_markdown_projections",
       "synced": {
-        "bugs_synced": 70,
-        "fixes_synced": 38
+        "bugs_synced": 84,
+        "fixes_synced": 48
       },
-      "latency_ms": 3867.569923400879
+      "latency_ms": 5058.581352233887
     },
     {
       "session": 27,
       "action": "abstention_test",
       "abstain": true,
-      "latency_ms": 66.8342113494873
+      "latency_ms": 1297.741413116455
     },
     {
       "session": 28,
       "action": "search_with_bug_history",
       "bugs_found": 5,
-      "latency_ms": 75.05249977111816
+      "latency_ms": 1646.1753845214844
     },
     {
       "session": 29,
       "action": "audit_call_log",
-      "total_logged_calls": 44,
-      "latency_ms": 30.533313751220703
+      "total_logged_calls": 80,
+      "latency_ms": 17.28534698486328
     },
     {
       "session": 30,
       "action": "compile_reproducible_report",
-      "latency_ms": 0.0152587890625
+      "latency_ms": 0.019073486328125
     }
   ],
   "verifications": {
@@ -191,7 +191,7 @@
     "bug_history_retrieved": true,
     "call_log_audited": true
   },
-  "total_duration_seconds": 28.63,
+  "total_duration_seconds": 49.26,
   "total_sessions": 30,
   "all_verifications_passed": true
 }
