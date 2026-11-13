@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "knowledge-brain": {
+      "command": "C:/Users/TANISH/AppData/Local/Programs/Python/Python313/python.exe",
+      "args": [
+        "c:/Users/TANISH/OneDrive/Desktop/New folder (2)/archive/BRAIN/mcp_server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "c:/Users/TANISH/OneDrive/Desktop/New folder (2)/archive/BRAIN"
+      }
+    }
+  }
+}
+

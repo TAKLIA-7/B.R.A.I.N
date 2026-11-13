@@ -89,3 +89,5 @@ This index is generated idempotently from authoritative PostgreSQL records.
 | [BUG-7F8EF0](./bugs/BUG-7F8EF0.md) | Postgres connection pool exhaustion under load | `investigating` | `high` | qa-agent |
 | [BUG-DB-c74c39](./bugs/BUG-DB-c74c39.md) | Async DB connection pool exhausted under concurrent logins | `verified` | `high` | Agent A |
 | [BUG-SCENARIO-A0E4](./bugs/BUG-SCENARIO-A0E4.md) | Pydantic ValidationError returned as 500 in task API | `verified` | `medium` | agent-B |
+| [BUG-ANTIGRAVITY-001](./bugs/BUG-ANTIGRAVITY-001.md) | PostgreSQL connection pool exhaustion on concurrent startup | `open` | `high` | antigravity_agent |
+| [BUG-STRIPE-002](./bugs/BUG-STRIPE-002.md) | Stripe Webhook Signature Verification Failure | `fixed` | `high` | agent_beta |
